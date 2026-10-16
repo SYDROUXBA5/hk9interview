@@ -15,6 +15,8 @@ git clone https://github.com/SYDROUXBA5/hk9interview.git ~/.claude/skills/hk9int
 ```
 
 Then in Claude Code type `/hk9interview` (or just ask for a referral video from your interview footage).
+It first asks four quick questions: how long the film should be, vertical / horizontal / both, whether it opens on
+an action moment or straight on camera, and whether it picks the answers or you do. The rest is the house style.
 
 ## Requirements
 

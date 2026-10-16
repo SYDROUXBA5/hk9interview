@@ -1,6 +1,6 @@
 """EDIT FILE: the whole film as data. Copy this next to the footage (or anywhere), fill it in, then:
     python3 <skill>/scripts/build.py edit.py --dry      # timeline + warnings, seconds; run after every change
-    python3 <skill>/scripts/build.py edit.py            # renders OUTPUT_vertical.mp4 and OUTPUT_horizontal.mp4
+    python3 <skill>/scripts/build.py edit.py            # renders OUTPUT_vertical.mp4 and/or OUTPUT_horizontal.mp4 (FORMATS)
 
 Times are in seconds. "Source" times are positions inside a clip; "output" times are positions in the film.
 Every number below is a placeholder showing the shape; replace all of them with measured values.
@@ -14,11 +14,17 @@ INTERVIEW = "IMG_0001"                # the interview clip (file name, stem, or 
 ROOM_TONE = 14.90                     # start of >= 0.6 s in the interview where nobody speaks (fills gaps in the voice)
 NOROT = ()                            # clips with a wrong rotation flag (upright only with -noautorotate), e.g. ("0012",)
 
+# ---------------------------------------------------------------- THE USER'S ANSWERS (asked before editing)
+TARGET_LENGTH = 90                    # seconds they asked for (about 60 / 90 / up to 105); --dry warns if 10% off
+FORMATS = ("vertical", "horizontal")  # or ("vertical",) or ("horizontal",)
+MUSIC = True                          # the house style has a quiet music bed; False only if they ask for none
+
 # ---------------------------------------------------------------- SOUND
 BPM = 112                             # music tempo; sections start on beats
 DENOISE = dict(gmin_db=-24.0, beta=1.7)   # background reduction on the interview (~-17 dB); see references/lessons.md
 # Cold open: a few seconds of natural-sound action before he speaks (a warning, the send, the bite...).
-# hit = source time of the impact moment; the music's first downbeat lands exactly there. None = no cold open.
+# hit = source time of the impact moment; the music's first downbeat lands exactly there.
+# None = straight on camera: then the first (on-camera) shot's clip_in = piece in-point minus ~0.5 s (--dry says exactly).
 COLD = dict(clip="IMG_0002", cin=5.35, cout=12.45, hit=11.25)
 # Music energy per section: 1 = plucks only, 2 = + bass, hats, kick, 3 = + off-beat kick (the action sections).
 ENERGY = {"intro": 1, "why": 2, "select": 2, "dog": 1, "ready": 3, "school": 2, "conf": 2, "proof": 3, "rec": 2}

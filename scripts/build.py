@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render a referral-interview film from an edit file (the whole edit as data), vertical 9:16 and horizontal 16:9.
 
-Usage:  python3 build.py EDIT.py                 render both orientations
+Usage:  python3 build.py EDIT.py                 render the edit's FORMATS (default: both orientations)
         python3 build.py EDIT.py --dry           print the timeline and warnings only (fast; run it after every edit change)
         python3 build.py EDIT.py --vertical      (or --horizontal) render one orientation
 Env:    WORK=<dir>  intermediate files (default: work_<edit name>/ next to the edit file)
@@ -32,8 +32,9 @@ if not ARGS: sys.exit(__doc__)
 EDIT_PATH = os.path.abspath(ARGS[0])
 _spec = importlib.util.spec_from_file_location("edit", EDIT_PATH); E = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(E)
 DRY = "--dry" in sys.argv
-ORIENTS = [o for o in ("vertical", "horizontal") if f"--{o}" in sys.argv] or ["vertical", "horizontal"]
 def opt(name, default): return getattr(E, name, default)
+ORIENTS = [o for o in ("vertical", "horizontal") if f"--{o}" in sys.argv] or list(opt("FORMATS", ("vertical", "horizontal")))
+assert ORIENTS and set(ORIENTS) <= {"vertical", "horizontal"}, f"FORMATS must be vertical and/or horizontal, not {ORIENTS}"
 
 FOOTAGE, OUTPUT = E.FOOTAGE, E.OUTPUT
 OUT_DIR = opt("OUT_DIR", FOOTAGE)
@@ -47,7 +48,9 @@ MUSIC_UNDER_VOICE, MUSIC_ALONE, DUCK = opt("MUSIC_UNDER_VOICE", -15.0), opt("MUS
 SECTIONS, ENERGY = E.SECTIONS, E.ENERGY
 CUTS = sorted(opt("CUTS", []))
 END_CARD = opt("END_CARD", 2.6)                 # picture after the last word (music rings out)
-COLD = opt("COLD", None)                        # natural-sound cold open, or None
+COLD = opt("COLD", None)                        # natural-sound cold open, or None (the film starts on camera)
+MUSIC = opt("MUSIC", True)                      # False: voice + natural sound only
+TARGET = opt("TARGET_LENGTH", None)             # seconds the user asked for; --dry warns when the cut is off by > 10%
 H_ZOOM_BACK = opt("HORIZONTAL_TALKING_HEAD_ZOOM_BACK", 0.15)
 GEOM = {"vertical": dict(W=1080, H=1920, SW=3414), "horizontal": dict(W=1920, H=1080, SW=1920)}   # SW = 16:9 source scaled to H high
 
@@ -169,6 +172,22 @@ def warnings():
         if name in NOROT: rot = 0
         if rot % 180: wd, ht = ht, wd
         if abs(wd / ht - 16 / 9) > 0.02: w.append(f"{name}: plays as {wd}x{ht}, not 16:9 landscape (wrong rotation flag? add it to NOROT)")
+    for sh in SHOTS:                                    # on-camera shots must show the words being heard
+        if clip(sh["clip"]) != INTERVIEW: continue
+        t0, t1 = sh["t0"], sh["t0"] + sh["dur"]; tq = t0 + 0.5 / FPS          # shot starts are rounded to frames
+        cur = next(((n, a, b2, o) for n, a, b2, o in TL if o - 1e-6 <= tq < o + b2 - a), None) or \
+              next(((n, a, b2, o) for n, a, b2, o in TL if o > tq), None)
+        if cur:
+            want = cur[1] + (t0 - cur[3])
+            if abs(want - sh["cin"]) > 0.04:
+                w.append(f"{sh['label'].split()[0]} is out of sync with the voice by {sh['cin'] - want:+.2f} s: set its clip_in to {want:.2f}")
+        for (n1, a1, b1, o1), (n2, a2, b2, o2) in zip(TL, TL[1:]):
+            j = o1 + b1 - a1
+            if t0 + 0.02 < j < t1 - 0.02 and abs(a2 - (b1 + (o2 - j))) > 0.01:
+                w.append(f"{sh['label'].split()[0]} runs across a cut in the voice at {j:.2f} s: end it there and continue in a new shot")
+    if TARGET and abs(TOTAL - TARGET) > 0.1 * TARGET:
+        w.append(f"film is {TOTAL:.1f} s, the user asked for about {TARGET:.0f} s: add or drop answers (never pad)")
+    if TOTAL > 105.5: w.append(f"film is {TOTAL:.1f} s: over the 1:45 ceiling of this style")
     for (n, a, b, o) in TL:
         if a < TONE + 0.6 and b > TONE: w.append(f"piece {n} overlaps the room-tone span {TONE}-{TONE + 0.6:.2f}: fine only if that stretch is silent")
     return w
@@ -294,8 +313,9 @@ def build_audio():
     active = rms > 10 ** (-32 / 20)                                 # speech frames (after gain)
     speech_db = 20 * np.log10(np.sqrt((fr[active] ** 2).mean()))
     music, gdb = synth_music(active)
+    if not MUSIC: music[:] = 0.0
     ra, rb = opt("MUSIC_REF", (ORDER[min(1, len(ORDER) - 1)], ORDER[-1]))         # the bed's own level is measured over these sections
-    ref = np.sqrt((music[int(SEC[ra] * SR):int(SEC[rb] * SR)] ** 2).mean())
+    ref = np.sqrt((music[int(SEC[ra] * SR):int(SEC[rb] * SR)] ** 2).mean()) + 1e-12
     music *= (10 ** (speech_db / 20) / ref) * (10 ** (gdb / 20))[:, None]
     nat = build_nat()
     mix = voice + music + nat
@@ -342,6 +362,8 @@ def main():
     for sh in SHOTS:
         print(f"{sh['t0']:6.2f}-{sh['t0'] + sh['dur']:5.2f}  {sh['dur']:5.2f}  {sh['label']}  [{sh['clip']} {sh['cin']:.2f}-{sh['cin'] + sh['dur']:.2f}]"
               + (f"\n{'':22}{sh['line']}" if sh["line"] else ""))
+    print(f"formats: {', '.join(ORIENTS)}; music {'on' if MUSIC else 'off'}; cold open {'yes' if COLD else 'no'}"
+          + (f"; target {TARGET:.0f} s" if TARGET else ""))
     print(f"total {TOTAL:.2f}s; sections start on beats: " + ", ".join(f"{k} {v:.2f}" for k, v in SEC.items()))
     for w in warnings(): print("WARNING:", w)
     if DRY: return

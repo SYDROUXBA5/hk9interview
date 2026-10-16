@@ -1,6 +1,6 @@
 ---
 name: hk9interview
-description: Edits phone-shot referral or testimonial interview footage (one interview clip plus b-roll clips) into a finished 60-105 s referral film, delivered both vertical 9:16 and horizontal 16:9. It cuts out the interviewer's voice, picks the strongest answers, covers each line with matching action b-roll framed on the subject, removes "uh"/"um", cleans the background noise, opens on a natural-sound action moment and lays a quiet synthesised music bed under the voice. Use this whenever someone has interview + b-roll footage of a handler, client, officer or customer and wants a referral, testimonial or review video, or asks to cut the interviewer out, match b-roll to what is said, clean up a phone-mic interview, remove filler words, or make vertical and horizontal versions, even if they never say "referral". Built on K-9 handler referrals and works for any spoken testimonial.
+description: Edits phone-shot referral or testimonial interview footage (one interview clip plus b-roll clips) into a finished 60-105 s referral film, vertical 9:16, horizontal 16:9 or both. It first asks four quick questions (length, format, how it opens, who picks the answers), then cuts out the interviewer's voice, picks the strongest answers, covers each line with matching action b-roll framed on the subject, removes "uh"/"um", cleans the background noise and lays a quiet synthesised music bed under the voice, in one house style with no captions or graphics. Use this whenever someone has interview + b-roll footage of a handler, client, officer or customer and wants a referral, testimonial or review video, or asks to cut the interviewer out, match b-roll to what is said, clean up a phone-mic interview, remove filler words, or make vertical or horizontal versions, even if they never say "referral". Built on K-9 handler referrals and works for any spoken testimonial.
 ---
 
 # HK9 interview: referral film from interview footage
@@ -12,12 +12,40 @@ and by action shots. Full detail of the look and sound is in `references/style.m
 The whole edit lives in one Python "edit file" (copy `assets/edit_template.py`); `scripts/build.py` renders it.
 That makes every revision cheap: change a number, run `--dry` (seconds), render, check.
 
-## Before you start
+## First, ask (before touching the footage)
 
-Confirm with the user, briefly, unless the request already says it:
-- the footage folder, and which clip is the interview (inventory will suggest it: longest clip with steady speech)
-- target length (default about 90 s; keep it at or under 1:45) and anything that must be in or out
-- who the interviewer is (usually the person holding the phone; her voice must never be heard)
+Ask these four in one go: with the AskUserQuestion tool when you have it (recommended option first), otherwise as
+a short numbered list. Skip any the request already answers.
+
+1. **Length**: "How long should the film be?"
+   - About 90 s (Recommended): the full story arc
+   - About 60 s: who he is, why this dog/vendor, the dog, the proof, the recommendation
+   - Up to 1:45: the full arc with the longer answers (the style's ceiling)
+   - (Other: an exact length)
+2. **Format**: "Which format?"
+   - Both vertical and horizontal (Recommended): same cut, identical audio
+   - Vertical 9:16 only: Reels, TikTok, Shorts
+   - Horizontal 16:9 only: YouTube, website, a TV screen
+3. **Opening**: "How should it open?"
+   - Action cold open (Recommended): 6-8 s of natural sound (the warning, the send, the bite) before he speaks
+   - Straight on camera: he introduces himself from the first frame
+4. **Answers**: "Who picks the answers?"
+   - You pick the strongest (Recommended)
+   - I'll choose: after transcribing, show the answers as a short numbered list (one line each, with source times)
+     and let them pick
+
+Also needed, and usually in the request already: the footage folder (ask in plain words if missing). The interviewer
+is found automatically by pitch; ask only if two voices are hard to tell apart.
+
+Everything else is the house style: no captions or graphics, action b-roll, fillers removed, background cleaned,
+quiet music bed. Do not ask about it; follow it unless the user volunteers a change (for example "no music" means
+`MUSIC = False` in the edit file).
+
+Write the answers into the edit file: `TARGET_LENGTH` (seconds), `FORMATS` (`("vertical", "horizontal")`,
+`("vertical",)` or `("horizontal",)`), and `COLD` (`None` for straight on camera). `--dry` then warns if the cut is
+more than 10% off the length asked for.
+
+## Setup
 
 Check the tools once: `ffmpeg -version` (8.x; on a Mac it uses the hardware HEVC encoder, elsewhere libx265),
 `python3 -c "import numpy, scipy, PIL"`, `whisper-cli --help` with a model at `~/.whisper-models/ggml-small.en.bin`
@@ -40,10 +68,11 @@ a 90/270 rotation flag that looks wrong goes in the edit's `NOROT`.
 was 180-290 Hz and about 10 dB louder because she held the phone; he was about 105 Hz), then
 `speakers.py INTERVIEW runs <threshold>` lists her stretches. Questions and her reactions are never used.
 
-**3. Choose the answers.** Build the story in sections, typically: who he is (on camera) → why this vendor / this
+**3. Choose the answers** (or let the user choose, if that was their answer). Build the story in sections, typically: who he is (on camera) → why this vendor / this
 dog → how the dog was chosen → the dog's character → "ready to work" → the course → confidence leaving → first
-real result on the job (the strongest proof line) → recommendation, closing on camera. Use the best 60-105 s, cut
-mid-answer where the sense allows, and drop repeats. Put each piece's in/out in silence: read the level envelope
+real result on the job (the strongest proof line) → recommendation, closing on camera. Fit the length they asked for: about 60 s keeps
+intro, one "why", the dog, the proof and the recommendation; about 90 s is the full arc; never pad with b-roll-only
+stretches to reach a length. Cut mid-answer where the sense allows, and drop repeats. Put each piece's in/out in silence: read the level envelope
 (`fillers.py formants CLIP A-B` prints level every 30 ms), never Whisper's word times, which drift by 0.2-0.5 s.
 
 **4. Fillers.** Remove the "uh"/"um"s: `fillers.py scan` on a voice track lists candidates (Whisper with a
@@ -52,9 +81,12 @@ in the source (level, pitch, formants, Whisper on the isolated snippet). Real on
 A filler on camera is cut and hidden by splitting the on-camera shot and punching in (zoom +0.2) at the cut.
 Leave 0.1-0.25 s of natural pause; read the full method in the `fillers.py` docstring.
 
-**5. Cold open.** Find 6-8 s of natural-sound action in the b-roll (a K-9 warning, the send, the bite; or the
+**5. Cold open** (only if they chose it; otherwise `COLD = None`, see below). Find 6-8 s of natural-sound action in the b-roll (a K-9 warning, the send, the bite; or the
 equivalent big moment for another kind of work). Set `COLD` with `hit` on the impact so the music's first downbeat
 lands on it. Transcribe the window: if someone else talks in it, shorten it.
+Straight on camera instead: the film's first shot is the talking head from output 0, while his first word lands on the
+first beat (about 0.5 s in), so its clip_in is the piece's source in-point minus that lead; `--dry` prints the exact
+value in its sync warning ("set its clip_in to ...").
 
 **6. Match b-roll to every line.** One shot per line or half-line, chosen for what is being said, and always ACTION:
 the dog searching, alerting, biting, trailing, driving forward; the handler working the dog. The client rejected
@@ -74,14 +106,16 @@ into action, whip blur on the hardest cuts. Values the client liked are in `refe
 a hold, the decoy's shout at a grip. Each window must be clean of other voices: transcribe it.
 
 **9. Build.** `python3 S/build.py edit.py --dry` prints the timeline (every shot, its source range and its line) and
-warnings; fix and repeat until it reads right. Then `python3 S/build.py edit.py` renders
-`OUTPUT_vertical.mp4` (1080x1920) and `OUTPUT_horizontal.mp4` (1920x1080) with the same cut and identical audio.
+warnings; fix and repeat until it reads right. Then `python3 S/build.py edit.py` renders the formats chosen:
+`OUTPUT_vertical.mp4` (1080x1920) and/or `OUTPUT_horizontal.mp4` (1920x1080), same cut and identical audio.
+`--dry` also checks that every on-camera shot is in sync with the voice and none runs across a cut: fix every
+warning it prints before rendering.
 Look at the "level at each voice piece's edge" lines: any edge marked "on a sound" needs moving.
 
 **10. Check, then report.** `python3 S/qa.py OUTPUT_vertical.mp4 WORK` prints duration, loudness (target -16
 LUFS), the transcript, filler candidates and high-pitch runs, and writes a frame strip. Open the strip and confirm
-the subject is in frame in every shot (also check the horizontal one). Report to the user: length, the shot list
-(time, what we see, the line), what you could not confirm by ear, and the two file paths. Flag ear-only items
+the subject is in frame in every shot (also check the horizontal one). Report to the user: length (against what they asked
+for), the shot list (time, what we see, the line), what you could not confirm by ear, and the file path(s). Flag ear-only items
 plainly (splices, music level, any remaining background sound); never claim you listened.
 
 ## Revisions
